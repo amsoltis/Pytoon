@@ -1,0 +1,25 @@
+render_spec_version: 1
+engine_policy_default: local_preferred
+brand_safe_default: true
+segment_duration_seconds: 3
+transition:
+  type: crossfade
+  duration_ms: 150
+output:
+  width: 1080
+  height: 1920
+  fps: 30
+  codec: h264
+  pixel_format: yuv420p
+  max_bitrate: 12M
+limits:
+  max_image_edge_px: 4096
+  max_asset_mb: 20
+storage:
+  backend: filesystem
+  filesystem_root: /data/storage
+queue:
+  provider: redis
+observability:
+  json_logs: true
+  metrics_enabled: true

@@ -1,0 +1,368 @@
+"""Low-level ffmpeg operations."""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+from typing import Optional
+
+from pytoon.log import get_logger
+
+logger = get_logger(__name__)
+
+
+def run_ffmpeg(args: list[str], timeout: int = 600) -> subprocess.CompletedProcess:
+    """Run an ffmpeg command and return the result."""
+    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "warning"] + args
+    logger.debug("ffmpeg_cmd", cmd=" ".join(cmd))
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    if result.returncode != 0:
+        logger.error("ffmpeg_error", stderr=result.stderr[:500])
+        result.check_returncode()
+    return result
+
+
+def run_ffprobe(args: list[str], timeout: int = 30) -> str:
+    """Run ffprobe and return stdout."""
+    cmd = ["ffprobe", "-hide_banner"] + args
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Concat with crossfade
+# ---------------------------------------------------------------------------
+
+def concat_segments(
+    segment_paths: list[Path],
+    output_path: Path,
+    crossfade_ms: int = 150,
+    fps: int = 30,
+    width: int = 1080,
+    height: int = 1920,
+) -> Path:
+    """Concatenate segment clips, optionally with crossfade transitions.
+
+    For V1, we use ffmpeg concat demuxer for simplicity when crossfade=0,
+    and the xfade filter when crossfade > 0.
+    """
+    if not segment_paths:
+        raise ValueError("No segments to concatenate")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if len(segment_paths) == 1:
+        # Single segment — just re-encode
+        run_ffmpeg([
+            "-i", str(segment_paths[0]),
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-r", str(fps),
+            "-s", f"{width}x{height}",
+            str(output_path),
+        ])
+        return output_path
+
+    if crossfade_ms <= 0:
+        return _concat_demuxer(segment_paths, output_path, fps, width, height)
+    else:
+        return _concat_xfade(segment_paths, output_path, crossfade_ms, fps, width, height)
+
+
+def _concat_demuxer(
+    paths: list[Path], out: Path, fps: int, w: int, h: int,
+) -> Path:
+    """Simple concat via demuxer (no transitions)."""
+    list_file = out.with_suffix(".txt")
+    with open(list_file, "w") as f:
+        for p in paths:
+            f.write(f"file '{p}'\n")
+    run_ffmpeg([
+        "-f", "concat", "-safe", "0", "-i", str(list_file),
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-r", str(fps), "-s", f"{w}x{h}",
+        str(out),
+    ])
+    list_file.unlink(missing_ok=True)
+    return out
+
+
+def _concat_xfade(
+    paths: list[Path], out: Path, xfade_ms: int, fps: int, w: int, h: int,
+) -> Path:
+    """Concat with xfade transitions between each pair."""
+    xfade_sec = xfade_ms / 1000.0
+
+    # Get durations
+    durations = [_get_duration(p) for p in paths]
+
+    # Build filter chain
+    inputs = []
+    for p in paths:
+        inputs.extend(["-i", str(p)])
+
+    if len(paths) == 2:
+        offset = max(0, durations[0] - xfade_sec)
+        filter_complex = (
+            f"[0:v][1:v]xfade=transition=fade:duration={xfade_sec}:offset={offset},"
+            f"format=yuv420p,scale={w}:{h},fps={fps}[outv]"
+        )
+        run_ffmpeg(inputs + [
+            "-filter_complex", filter_complex,
+            "-map", "[outv]",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            str(out),
+        ])
+        return out
+
+    # For 3+ segments, chain xfade filters
+    filter_parts = []
+    current_label = "0:v"
+    cumulative_offset = 0.0
+
+    for i in range(1, len(paths)):
+        offset = cumulative_offset + durations[i - 1] - xfade_sec * i
+        offset = max(0, offset)
+        if i == 1:
+            prev = "[0:v]"
+            nxt = "[1:v]"
+        else:
+            prev = f"[v{i-1}]"
+            nxt = f"[{i}:v]"
+
+        if i < len(paths) - 1:
+            out_label = f"[v{i}]"
+        else:
+            out_label = "[outv]"
+
+        cumulative_offset += durations[i - 1] - xfade_sec
+        xf_offset = max(0, cumulative_offset)
+
+        filter_parts.append(
+            f"{prev}{nxt}xfade=transition=fade:duration={xfade_sec}:offset={xf_offset}"
+            f"{out_label}"
+        )
+
+    filter_str = ";".join(filter_parts)
+    # Append format + scale
+    # We modify the last filter to include format
+    filter_str = filter_str.replace(
+        "[outv]",
+        f",format=yuv420p,scale={w}:{h},fps={fps}[outv]"
+    )
+
+    run_ffmpeg(inputs + [
+        "-filter_complex", filter_str,
+        "-map", "[outv]",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        str(out),
+    ])
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Overlay
+# ---------------------------------------------------------------------------
+
+def overlay_image(
+    video_path: Path,
+    image_path: Path,
+    output_path: Path,
+    x: str = "(W-w)/2",
+    y: str = "(H-h)*0.35",
+    scale_w: int = 600,
+    shadow: bool = False,
+    glow: bool = False,
+) -> Path:
+    """Overlay a product/person image on the video."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Build overlay filter
+    filters = f"[1:v]scale={scale_w}:-1[ovr];"
+    if shadow:
+        filters += "[ovr]drawbox=x=2:y=2:w=iw:h=ih:color=black@0.3:t=fill[ovrs];"
+        filters += f"[0:v][ovrs]overlay={x}:{y}[out]"
+    else:
+        filters += f"[0:v][ovr]overlay={x}:{y}[out]"
+
+    run_ffmpeg([
+        "-i", str(video_path),
+        "-i", str(image_path),
+        "-filter_complex", filters,
+        "-map", "[out]",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        str(output_path),
+    ])
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# Captions
+# ---------------------------------------------------------------------------
+
+def burn_captions(
+    video_path: Path,
+    output_path: Path,
+    captions: list[dict],
+    font: str = "Arial",
+    fontsize: int = 56,
+    fontcolor: str = "white",
+    safe_margin: int = 120,
+    width: int = 1080,
+) -> Path:
+    """Burn caption text onto the video using drawtext filters."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not captions:
+        # No captions — just copy
+        run_ffmpeg(["-i", str(video_path), "-c", "copy", str(output_path)])
+        return output_path
+
+    # Build drawtext filter chain
+    filters = []
+    for cap in captions:
+        text = cap["text"].replace("'", "'\\''").replace(":", "\\:")
+        start = cap["start"]
+        end = cap["end"]
+        filters.append(
+            f"drawtext=text='{text}':"
+            f"fontsize={fontsize}:fontcolor={fontcolor}:"
+            f"font={font}:"
+            f"x=(w-text_w)/2:y=h-{safe_margin}-text_h:"
+            f"enable='between(t,{start},{end})'"
+        )
+
+    vf = ",".join(filters)
+    run_ffmpeg([
+        "-i", str(video_path),
+        "-vf", vf,
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        str(output_path),
+    ])
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# Audio
+# ---------------------------------------------------------------------------
+
+def mix_audio(
+    video_path: Path,
+    output_path: Path,
+    music_path: Optional[Path] = None,
+    voice_path: Optional[Path] = None,
+    music_level_db: float = -18,
+    voice_level_db: float = -6,
+    duck_music: bool = True,
+    duration_seconds: Optional[float] = None,
+) -> Path:
+    """Mix music and/or voice onto the video."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not music_path and not voice_path:
+        run_ffmpeg(["-i", str(video_path), "-c", "copy", str(output_path)])
+        return output_path
+
+    inputs = ["-i", str(video_path)]
+    filter_parts = []
+    stream_idx = 1  # 0 is video
+
+    if music_path and music_path.exists():
+        inputs.extend(["-i", str(music_path)])
+        # Loop music to duration
+        loop = f"-stream_loop -1" if duration_seconds else ""
+        filter_parts.append(
+            f"[{stream_idx}:a]aloop=loop=-1:size=2e+09,atrim=0:{duration_seconds or 60},"
+            f"volume={_db_to_vol(music_level_db)}[music]"
+        )
+        stream_idx += 1
+
+    if voice_path and voice_path.exists():
+        inputs.extend(["-i", str(voice_path)])
+        filter_parts.append(
+            f"[{stream_idx}:a]volume={_db_to_vol(voice_level_db)}[voice]"
+        )
+        stream_idx += 1
+
+    # Mix
+    if music_path and voice_path:
+        if duck_music:
+            filter_parts.append("[music][voice]sidechaincompress=threshold=0.02:ratio=6[ducked]")
+            filter_parts.append("[ducked][voice]amix=inputs=2:duration=shortest[outa]")
+        else:
+            filter_parts.append("[music][voice]amix=inputs=2:duration=shortest[outa]")
+    elif music_path:
+        filter_parts.append("[music]anull[outa]")
+    else:
+        filter_parts.append("[voice]anull[outa]")
+
+    filter_str = ";".join(filter_parts)
+
+    run_ffmpeg(inputs + [
+        "-filter_complex", filter_str,
+        "-map", "0:v", "-map", "[outa]",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+        "-shortest",
+        str(output_path),
+    ])
+    return output_path
+
+
+def loudness_normalize(
+    input_path: Path,
+    output_path: Path,
+    target_lufs: float = -14.0,
+) -> Path:
+    """EBU R128 loudness normalization."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    run_ffmpeg([
+        "-i", str(input_path),
+        "-af", f"loudnorm=I={target_lufs}:TP=-1.5:LRA=11",
+        "-c:v", "copy",
+        "-c:a", "aac", "-b:a", "192k",
+        str(output_path),
+    ])
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# Thumbnail
+# ---------------------------------------------------------------------------
+
+def extract_thumbnail(
+    video_path: Path,
+    output_path: Path,
+    timestamp: float = 1.0,
+) -> Path:
+    """Extract a single frame as thumbnail."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    run_ffmpeg([
+        "-i", str(video_path),
+        "-ss", str(timestamp),
+        "-frames:v", "1",
+        "-q:v", "2",
+        str(output_path),
+    ])
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _get_duration(path: Path) -> float:
+    """Get duration of a video file in seconds."""
+    out = run_ffprobe([
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(path),
+    ])
+    try:
+        return float(out.strip())
+    except (ValueError, AttributeError):
+        return 3.0  # default assumption
+
+
+def _db_to_vol(db: float) -> float:
+    """Convert dB to ffmpeg volume multiplier."""
+    return 10 ** (db / 20)

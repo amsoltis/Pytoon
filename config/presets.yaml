@@ -1,0 +1,147 @@
+presets:
+  - id: product_hero_clean
+    name: Product Hero Clean
+    archetype: PRODUCT_HERO
+    brand_safe: true
+    engine_policy: local_preferred
+    caption_style:
+      font: "Inter"
+      size_rules: "auto"
+      position: "lower_third"
+      safe_margin_px: 120
+    motion_profile: subtle
+    transitions:
+      type: crossfade
+      duration_ms: 150
+    audio:
+      music_level_db: -18
+      voice_level_db: -6
+
+  - id: product_hero_punchy
+    name: Product Hero Punchy
+    archetype: PRODUCT_HERO
+    brand_safe: false
+    engine_policy: local_preferred
+    caption_style:
+      font: "Bebas Neue"
+      size_rules: "large"
+      position: "center"
+      safe_margin_px: 120
+    motion_profile: punchy
+    transitions:
+      type: crossfade
+      duration_ms: 150
+    audio:
+      music_level_db: -14
+      voice_level_db: -5
+
+  - id: overlay_classic
+    name: Overlay Classic
+    archetype: OVERLAY
+    brand_safe: true
+    engine_policy: local_preferred
+    caption_style:
+      font: "Inter"
+      size_rules: "auto"
+      position: "lower_third"
+      safe_margin_px: 120
+    motion_profile: subtle
+    transitions:
+      type: crossfade
+      duration_ms: 150
+    audio:
+      music_level_db: -20
+      voice_level_db: -6
+
+  - id: overlay_glow
+    name: Overlay Glow
+    archetype: OVERLAY
+    brand_safe: true
+    engine_policy: local_preferred
+    caption_style:
+      font: "Inter"
+      size_rules: "auto"
+      position: "lower_third"
+      safe_margin_px: 120
+    motion_profile: smooth
+    transitions:
+      type: crossfade
+      duration_ms: 150
+    overlay_fx:
+      shadow: true
+      glow: true
+    audio:
+      music_level_db: -18
+      voice_level_db: -6
+
+  - id: overlay_bold
+    name: Overlay Bold
+    archetype: OVERLAY
+    brand_safe: true
+    engine_policy: local_preferred
+    caption_style:
+      font: "Montserrat"
+      size_rules: "large"
+      position: "upper_third"
+      safe_margin_px: 120
+    motion_profile: punchy
+    transitions:
+      type: crossfade
+      duration_ms: 150
+    audio:
+      music_level_db: -16
+      voice_level_db: -6
+
+  - id: meme_fast
+    name: Meme Fast
+    archetype: MEME_TEXT
+    brand_safe: false
+    engine_policy: local_preferred
+    caption_style:
+      font: "Impact"
+      size_rules: "large"
+      position: "center"
+      safe_margin_px: 120
+    motion_profile: chaotic
+    transitions:
+      type: cut
+      duration_ms: 0
+    audio:
+      music_level_db: -12
+      voice_level_db: -6
+
+  - id: meme_smooth
+    name: Meme Smooth
+    archetype: MEME_TEXT
+    brand_safe: false
+    engine_policy: local_preferred
+    caption_style:
+      font: "Arial Black"
+      size_rules: "large"
+      position: "center"
+      safe_margin_px: 120
+    motion_profile: smooth
+    transitions:
+      type: crossfade
+      duration_ms: 150
+    audio:
+      music_level_db: -14
+      voice_level_db: -6
+
+  - id: brand_safe_minimal
+    name: Brand Safe Minimal
+    archetype: OVERLAY
+    brand_safe: true
+    engine_policy: local_only
+    caption_style:
+      font: "Inter"
+      size_rules: "small"
+      position: "lower_third"
+      safe_margin_px: 140
+    motion_profile: minimal
+    transitions:
+      type: crossfade
+      duration_ms: 150
+    audio:
+      music_level_db: -22
+      voice_level_db: -8

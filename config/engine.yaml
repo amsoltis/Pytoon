@@ -1,0 +1,16 @@
+engine_fallback_chain:
+  - local_comfyui
+  - api_luma
+
+adapters:
+  local_comfyui:
+    type: local
+    health_endpoint: /system_stats
+    workflows:
+      PRODUCT_HERO: i2v_product_hero
+      OVERLAY: overlay_product
+      MEME_TEXT: t2v_meme
+
+  api_luma:
+    type: api
+    base_url: https://api.example.com

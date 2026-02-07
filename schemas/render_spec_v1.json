@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Pytoon RenderSpec V1",
+  "type": "object",
+  "required": [
+    "render_spec_version",
+    "job_id",
+    "archetype",
+    "brand_safe",
+    "aspect_ratio",
+    "target_duration_seconds",
+    "segment_duration_seconds",
+    "preset_id",
+    "assets",
+    "segment_prompts",
+    "captions_plan",
+    "audio_plan",
+    "constraints"
+  ],
+  "properties": {
+    "render_spec_version": { "type": "integer", "enum": [1] },
+    "job_id": { "type": "string" },
+    "archetype": {
+      "type": "string",
+      "enum": ["PRODUCT_HERO", "OVERLAY", "MEME_TEXT"]
+    },
+    "brand_safe": { "type": "boolean" },
+    "aspect_ratio": { "type": "string", "enum": ["9:16"] },
+    "target_duration_seconds": { "type": "integer", "minimum": 1, "maximum": 60 },
+    "segment_duration_seconds": { "type": "integer", "minimum": 2, "maximum": 4 },
+    "preset_id": { "type": "string" },
+    "engine_policy": {
+      "type": "string",
+      "enum": ["local_only", "local_preferred", "api_only"]
+    },
+    "assets": {
+      "type": "object",
+      "properties": {
+        "images": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri" }
+        },
+        "mask": { "type": "string", "format": "uri" },
+        "music": { "type": "string", "format": "uri" },
+        "voice": { "type": "string", "format": "uri" }
+      },
+      "required": ["images"]
+    },
+    "segment_prompts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "captions_plan": {
+      "type": "object",
+      "required": ["hook", "beats", "cta", "timings"],
+      "properties": {
+        "hook": { "type": "string" },
+        "beats": { "type": "array", "items": { "type": "string" } },
+        "cta": { "type": "string" },
+        "timings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["start", "end", "text"],
+            "properties": {
+              "start": { "type": "number" },
+              "end": { "type": "number" },
+              "text": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "audio_plan": {
+      "type": "object",
+      "properties": {
+        "music_level_db": { "type": "number" },
+        "voice_level_db": { "type": "number" },
+        "duck_music": { "type": "boolean" }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "safe_zones": { "type": "string" },
+        "keep_subject_static": { "type": "boolean" }
+      }
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["index", "duration_seconds"],
+        "properties": {
+          "index": { "type": "integer" },
+          "duration_seconds": { "type": "number" },
+          "prompt": { "type": "string" },
+          "engine": { "type": "string" }
+        }
+      }
+    }
+  }
+}
