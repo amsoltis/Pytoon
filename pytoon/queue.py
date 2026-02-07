@@ -1,33 +1,60 @@
-"""Redis-backed job / segment queue."""
+"""Redis-backed job / segment queue with automatic fakeredis fallback."""
 
 from __future__ import annotations
 
 import json
 from typing import Any, Optional
 
-import redis
+import redis as _redis_lib
 
 from pytoon.config import get_settings
 from pytoon.log import get_logger
 
 logger = get_logger(__name__)
 
-_pool: Optional[redis.ConnectionPool] = None
+_client: Optional[_redis_lib.Redis] = None
 
 QUEUE_KEY = "pytoon:jobs"
 SEGMENT_QUEUE_KEY = "pytoon:segments"
 
 
-def _get_pool() -> redis.ConnectionPool:
-    global _pool
-    if _pool is None:
-        settings = get_settings()
-        _pool = redis.ConnectionPool.from_url(settings.redis_url, decode_responses=True)
-    return _pool
+def _connect() -> _redis_lib.Redis:
+    """Connect to real Redis; fall back to fakeredis if unavailable."""
+    global _client
+    if _client is not None:
+        return _client
+
+    settings = get_settings()
+
+    # Try real Redis first
+    try:
+        pool = _redis_lib.ConnectionPool.from_url(
+            settings.redis_url, decode_responses=True,
+        )
+        client = _redis_lib.Redis(connection_pool=pool)
+        client.ping()
+        logger.info("queue_backend", backend="redis", url=settings.redis_url)
+        _client = client
+        return _client
+    except Exception:
+        pass
+
+    # Fall back to fakeredis (in-memory, same process)
+    try:
+        import fakeredis
+        client = fakeredis.FakeRedis(decode_responses=True)
+        logger.info("queue_backend", backend="fakeredis (in-memory)")
+        _client = client
+        return _client
+    except ImportError:
+        raise RuntimeError(
+            "Redis is not reachable and fakeredis is not installed. "
+            "Install fakeredis (`pip install fakeredis`) or start a Redis server."
+        )
 
 
-def get_redis() -> redis.Redis:
-    return redis.Redis(connection_pool=_get_pool())
+def get_redis() -> _redis_lib.Redis:
+    return _connect()
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +70,15 @@ def enqueue_job(job_id: str, payload: dict[str, Any] | None = None):
 
 def dequeue_job(timeout: int = 5) -> Optional[dict[str, Any]]:
     r = get_redis()
-    result = r.brpop(QUEUE_KEY, timeout=timeout)
+    # fakeredis brpop may behave differently; handle gracefully
+    try:
+        result = r.brpop(QUEUE_KEY, timeout=timeout)
+    except Exception:
+        # For fakeredis: fall back to non-blocking rpop
+        raw = r.rpop(QUEUE_KEY)
+        if raw is None:
+            return None
+        return json.loads(raw)
     if result is None:
         return None
     _, raw = result
@@ -62,7 +97,13 @@ def enqueue_segment(job_id: str, segment_index: int):
 
 def dequeue_segment(timeout: int = 5) -> Optional[dict[str, Any]]:
     r = get_redis()
-    result = r.brpop(SEGMENT_QUEUE_KEY, timeout=timeout)
+    try:
+        result = r.brpop(SEGMENT_QUEUE_KEY, timeout=timeout)
+    except Exception:
+        raw = r.rpop(SEGMENT_QUEUE_KEY)
+        if raw is None:
+            return None
+        return json.loads(raw)
     if result is None:
         return None
     _, raw = result

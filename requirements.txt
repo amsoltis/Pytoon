@@ -5,6 +5,7 @@ pydantic-settings>=2.2.0
 sqlalchemy>=2.0.29
 alembic>=1.13.0
 redis>=5.0.0
+fakeredis>=2.21.0
 pyyaml>=6.0.1
 structlog>=24.1.0
 python-multipart>=0.0.9

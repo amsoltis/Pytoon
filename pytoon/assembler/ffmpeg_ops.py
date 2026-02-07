@@ -208,34 +208,112 @@ def burn_captions(
     fontcolor: str = "white",
     safe_margin: int = 120,
     width: int = 1080,
+    archetype: str = "OVERLAY",
+    position: str = "lower_third",
 ) -> Path:
-    """Burn caption text onto the video using drawtext filters."""
+    """Burn caption text onto the video using drawtext filters.
+
+    Archetype-aware styling:
+      MEME_TEXT   → bold text with black background bar, top or center
+      PRODUCT_HERO → centered text with shadow, lower third
+      OVERLAY     → lower third with semi-transparent box behind text
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if not captions:
-        # No captions — just copy
         run_ffmpeg(["-i", str(video_path), "-c", "copy", str(output_path)])
         return output_path
 
-    # Build drawtext filter chain
     filters = []
     for cap in captions:
         text = cap["text"].replace("'", "'\\''").replace(":", "\\:")
         start = cap["start"]
         end = cap["end"]
-        filters.append(
-            f"drawtext=text='{text}':"
-            f"fontsize={fontsize}:fontcolor={fontcolor}:"
-            f"font={font}:"
-            f"x=(w-text_w)/2:y=h-{safe_margin}-text_h:"
-            f"enable='between(t,{start},{end})'"
-        )
+
+        if archetype == "MEME_TEXT":
+            # Meme style: bold text with dark box, upper area
+            filters.append(
+                f"drawbox=x=0:y=0:w=iw:h=130:color=black@0.75:t=fill:"
+                f"enable='between(t,{start},{end})'"
+            )
+            filters.append(
+                f"drawtext=text='{text}':"
+                f"fontsize=52:fontcolor=white:"
+                f"font=Impact:"
+                f"x=(w-text_w)/2:y=40:"
+                f"borderw=2:bordercolor=black:"
+                f"enable='between(t,{start},{end})'"
+            )
+        elif archetype == "PRODUCT_HERO":
+            # Hero style: elegant centered text with shadow, lower portion
+            filters.append(
+                f"drawtext=text='{text}':"
+                f"fontsize={fontsize}:fontcolor=white:"
+                f"font={font}:"
+                f"x=(w-text_w)/2:y=h-{safe_margin}-text_h:"
+                f"shadowcolor=black@0.6:shadowx=2:shadowy=2:"
+                f"enable='between(t,{start},{end})'"
+            )
+        else:
+            # Overlay / default: lower third with background box behind text
+            # Use drawtext with box=1 for a background box (avoids drawbox text_h issue)
+            filters.append(
+                f"drawtext=text='{text}':"
+                f"fontsize={fontsize}:fontcolor=white:"
+                f"font={font}:"
+                f"x=(w-text_w)/2:y=h-{safe_margin}-text_h:"
+                f"box=1:boxcolor=black@0.5:boxborderw=15:"
+                f"enable='between(t,{start},{end})'"
+            )
 
     vf = ",".join(filters)
     run_ffmpeg([
         "-i", str(video_path),
         "-vf", vf,
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        str(output_path),
+    ])
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# Brand watermark
+# ---------------------------------------------------------------------------
+
+def burn_watermark(
+    video_path: Path,
+    output_path: Path,
+    watermark_path: Path,
+    position: str = "top-right",
+    scale_w: int = 120,
+    opacity: float = 0.6,
+    margin: int = 30,
+) -> Path:
+    """Overlay a semi-transparent brand logo/watermark on the video."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    pos_map = {
+        "top-left": f"x={margin}:y={margin}",
+        "top-right": f"x=W-w-{margin}:y={margin}",
+        "bottom-left": f"x={margin}:y=H-h-{margin}",
+        "bottom-right": f"x=W-w-{margin}:y=H-h-{margin}",
+    }
+    pos_str = pos_map.get(position, pos_map["top-right"])
+
+    # Scale watermark, apply opacity, overlay
+    fc = (
+        f"[1:v]scale={scale_w}:-1,format=rgba,"
+        f"colorchannelmixer=aa={opacity}[wm];"
+        f"[0:v][wm]overlay={pos_str}:format=auto[out]"
+    )
+
+    run_ffmpeg([
+        "-i", str(video_path),
+        "-i", str(watermark_path),
+        "-filter_complex", fc,
+        "-map", "[out]", "-map", "0:a?",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-c:a", "copy",
         str(output_path),
     ])
     return output_path

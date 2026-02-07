@@ -1,8 +1,13 @@
 engine_fallback_chain:
+  - local_ffmpeg
   - local_comfyui
   - api_luma
 
 adapters:
+  local_ffmpeg:
+    type: local
+    description: "Pure ffmpeg composition engine (Ken Burns, overlay, meme)"
+
   local_comfyui:
     type: local
     health_endpoint: /system_stats

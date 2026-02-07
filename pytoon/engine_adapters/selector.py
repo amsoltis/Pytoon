@@ -6,6 +6,7 @@ from typing import Any
 
 from pytoon.config import get_engine_config
 from pytoon.engine_adapters.base import EngineAdapter
+from pytoon.engine_adapters.local_ffmpeg import LocalFFmpegAdapter
 from pytoon.engine_adapters.local_comfyui import LocalComfyUIAdapter
 from pytoon.engine_adapters.api_adapter import APIEngineAdapter
 from pytoon.log import get_logger
@@ -16,6 +17,7 @@ logger = get_logger(__name__)
 
 # Registry of adapter classes by name
 _ADAPTER_REGISTRY: dict[str, type[EngineAdapter]] = {
+    "local_ffmpeg": LocalFFmpegAdapter,
     "local_comfyui": LocalComfyUIAdapter,
     "api_luma": APIEngineAdapter,
 }

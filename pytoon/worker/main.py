@@ -25,8 +25,11 @@ def _handle_signal(sig, frame):
 
 
 async def worker_loop():
-    """Main loop: dequeue jobs and run them sequentially."""
-    setup_logging(json_output=True)
+    """Main loop: dequeue jobs and run them sequentially.
+
+    Uses async-friendly polling (sleep between checks) so it can run
+    as a background task inside the FastAPI event loop.
+    """
     init_db()
 
     # Resume interrupted jobs
@@ -35,9 +38,14 @@ async def worker_loop():
     logger.info("worker_started")
 
     while not _shutdown:
-        QUEUE_DEPTH.set(queue_depth())
-        msg = dequeue_job(timeout=3)
+        try:
+            QUEUE_DEPTH.set(queue_depth())
+        except Exception:
+            pass
+
+        msg = dequeue_job(timeout=1)
         if msg is None:
+            await asyncio.sleep(1)  # yield to event loop
             continue
 
         job_id = msg.get("job_id")
@@ -78,6 +86,7 @@ async def _resume_interrupted():
 def main():
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
+    setup_logging(json_output=False)
     asyncio.run(worker_loop())
 
 

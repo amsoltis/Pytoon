@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from pytoon.assembler.ffmpeg_ops import (
     burn_captions,
+    burn_watermark,
     concat_segments,
     extract_thumbnail,
     loudness_normalize,
@@ -96,7 +97,7 @@ async def assemble_job(db: Session, spec: RenderSpec) -> tuple[str, str]:
                 current = overlay_out
                 logger.info("assembly_overlay_done", job_id=spec.job_id)
 
-    # 3) Burn captions
+    # 3) Burn captions (archetype-aware styling)
     caption_style = preset.get("caption_style", {})
     if spec.captions_plan.timings:
         captions_out = job_dir / "03_captions.mp4"
@@ -112,9 +113,26 @@ async def assemble_job(db: Session, spec: RenderSpec) -> tuple[str, str]:
             fontsize=_fontsize_from_rules(caption_style.get("size_rules", "auto")),
             safe_margin=caption_style.get("safe_margin_px", 120),
             width=width,
+            archetype=spec.archetype.value,
+            position=caption_style.get("position", "lower_third"),
         )
         current = captions_out
         logger.info("assembly_captions_done", job_id=spec.job_id)
+
+    # 3b) Brand watermark (if brand_safe and a logo exists in config)
+    if spec.brand_safe:
+        logo_path = _find_brand_logo(storage)
+        if logo_path and logo_path.exists():
+            watermark_out = job_dir / "03b_watermark.mp4"
+            burn_watermark(
+                video_path=current,
+                output_path=watermark_out,
+                watermark_path=logo_path,
+                position="top-right",
+                opacity=0.6,
+            )
+            current = watermark_out
+            logger.info("assembly_watermark_done", job_id=spec.job_id)
 
     # 4) Mix audio
     music_path = None
@@ -187,3 +205,16 @@ async def assemble_job(db: Session, spec: RenderSpec) -> tuple[str, str]:
 def _fontsize_from_rules(rules: str) -> int:
     mapping = {"small": 40, "auto": 56, "large": 72}
     return mapping.get(rules, 56)
+
+
+def _find_brand_logo(storage) -> Path | None:
+    """Look for a brand logo in well-known locations."""
+    candidates = [
+        Path(storage.root) / "brand" / "logo.png",
+        Path(storage.root) / "brand" / "watermark.png",
+        Path(storage.root) / ".." / "assets" / "brand_logo.png",
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
