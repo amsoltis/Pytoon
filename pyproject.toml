@@ -39,6 +39,9 @@ pytoon-worker = "pytoon.worker.main:main"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+[tool.setuptools.packages.find]
+include = ["pytoon*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

@@ -424,6 +424,167 @@ def extract_thumbnail(
 
 
 # ---------------------------------------------------------------------------
+# V2: Scene composition with timeline-driven transitions  (P2-06)
+# ---------------------------------------------------------------------------
+
+def compose_scenes(
+    scene_clips: list[Path],
+    output_path: Path,
+    transitions: list[dict | None],
+    *,
+    fps: int = 30,
+    width: int = 1080,
+    height: int = 1920,
+) -> Path:
+    """Compose scene clips with per-scene transition types from the Timeline.
+
+    Args:
+        scene_clips: Ordered list of scene clip paths.
+        transitions: List of transition dicts (one per scene).
+                     Each dict has 'type' (cut|fade) and 'duration' (ms).
+                     Last entry should be None (no transition after last scene).
+    """
+    if not scene_clips:
+        raise ValueError("No scene clips to compose")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if len(scene_clips) == 1:
+        run_ffmpeg([
+            "-i", str(scene_clips[0]),
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-r", str(fps), "-s", f"{width}x{height}",
+            str(output_path),
+        ])
+        return output_path
+
+    # Get durations
+    durations = [_get_duration(p) for p in scene_clips]
+
+    inputs: list[str] = []
+    for p in scene_clips:
+        inputs.extend(["-i", str(p)])
+
+    # Build xfade filter chain
+    filter_parts: list[str] = []
+    cumulative_duration = durations[0]
+
+    for i in range(1, len(scene_clips)):
+        trans = transitions[i - 1] if i - 1 < len(transitions) else None
+        t_type = "fade"
+        t_dur_sec = 0.5
+
+        if trans:
+            t_type = trans.get("type", "fade")
+            t_dur_sec = trans.get("duration", 500) / 1000.0
+
+        if t_type == "cut":
+            t_dur_sec = 0.0
+
+        # xfade offset: point where transition starts
+        offset = max(0, cumulative_duration - t_dur_sec)
+
+        xfade_type = "fade" if t_type in ("fade", "fade_black") else "fade"
+
+        if i == 1:
+            prev = "[0:v]"
+        else:
+            prev = f"[v{i-1}]"
+        nxt = f"[{i}:v]"
+
+        if i < len(scene_clips) - 1:
+            out_label = f"[v{i}]"
+        else:
+            out_label = f",format=yuv420p,scale={width}:{height},fps={fps}[outv]"
+
+        if t_dur_sec > 0:
+            filter_parts.append(
+                f"{prev}{nxt}xfade=transition={xfade_type}"
+                f":duration={t_dur_sec}:offset={offset}{out_label}"
+            )
+        else:
+            # Cut: just concat without transition
+            filter_parts.append(
+                f"{prev}{nxt}xfade=transition=fade"
+                f":duration=0.001:offset={offset}{out_label}"
+            )
+
+        cumulative_duration = offset + durations[i]
+
+    filter_str = ";".join(filter_parts)
+
+    run_ffmpeg(inputs + [
+        "-filter_complex", filter_str,
+        "-map", "[outv]",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        str(output_path),
+    ])
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# V2: Timeline-based caption burn-in  (P2-07)
+# ---------------------------------------------------------------------------
+
+def burn_captions_v2(
+    video_path: Path,
+    output_path: Path,
+    captions: list[dict],
+    *,
+    font: str = "Arial",
+    fontsize: int = 48,
+    fontcolor: str = "white",
+    borderw: int = 2,
+    bordercolor: str = "black",
+    safe_margin_bottom: int = 150,
+    safe_margin_sides: int = 54,
+    width: int = 1080,
+) -> Path:
+    """Burn captions onto video using timeline caption track entries.
+
+    Each caption dict must have: text, start (ms), end (ms).
+    Default styling: white text, black outline, centered at bottom with
+    safe zone margin.
+
+    Ticket: P2-07
+    Acceptance Criteria: V2-AC-002, V2-AC-017
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not captions:
+        run_ffmpeg(["-i", str(video_path), "-c", "copy", str(output_path)])
+        return output_path
+
+    filters: list[str] = []
+    for cap in captions:
+        text = cap["text"].replace("'", "'\\''").replace(":", "\\:")
+        start_s = cap["start"] / 1000.0
+        end_s = cap["end"] / 1000.0
+
+        # Calculate Y position: bottom of safe area
+        y_pos = f"h-{safe_margin_bottom}-text_h"
+
+        filters.append(
+            f"drawtext=text='{text}':"
+            f"fontsize={fontsize}:fontcolor={fontcolor}:"
+            f"font={font}:"
+            f"x=(w-text_w)/2:y={y_pos}:"
+            f"borderw={borderw}:bordercolor={bordercolor}:"
+            f"box=1:boxcolor=black@0.4:boxborderw=12:"
+            f"enable='between(t,{start_s},{end_s})'"
+        )
+
+    vf = ",".join(filters)
+    run_ffmpeg([
+        "-i", str(video_path),
+        "-vf", vf,
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        str(output_path),
+    ])
+    return output_path
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

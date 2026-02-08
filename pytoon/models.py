@@ -156,3 +156,81 @@ class RenderMetadata(BaseModel):
     seeds: list[int] = Field(default_factory=list)
     created_at: Optional[str] = None
     completed_at: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# V2 enums and models  (P2-08 / P2-09)
+# ---------------------------------------------------------------------------
+
+class EnginePolicyV2(str, enum.Enum):
+    """V2 engine policies extend V1 with multi-engine support."""
+    LOCAL_ONLY = "local_only"
+    LOCAL_PREFERRED = "local_preferred"
+    API_ONLY = "api_only"
+    MULTI_ENGINE = "multi_engine"
+    SINGLE_ENGINE = "single_engine"
+
+
+class JobStatusV2(str, enum.Enum):
+    """Extended job states for V2 pipeline."""
+    QUEUED = "QUEUED"
+    PLANNING_SCENES = "PLANNING_SCENES"
+    BUILDING_TIMELINE = "BUILDING_TIMELINE"
+    RENDERING_SCENES = "RENDERING_SCENES"
+    COMPOSING = "COMPOSING"
+    AUDIO_ASSEMBLY = "AUDIO_ASSEMBLY"
+    FINALIZING = "FINALIZING"
+    DONE = "DONE"
+    FAILED = "FAILED"
+
+
+class SceneStatus(str, enum.Enum):
+    """Per-scene render status for V2."""
+    PENDING = "PENDING"
+    RENDERING = "RENDERING"
+    DONE = "DONE"
+    FAILED = "FAILED"
+    FALLBACK = "FALLBACK"
+
+
+class CreateJobRequestV2(BaseModel):
+    """V2 job creation request."""
+    preset_id: str
+    prompt: str = ""
+    target_duration_seconds: int = Field(ge=1, le=60, default=15)
+    brand_safe: Optional[bool] = None
+    engine_preference: Optional[str] = None
+    image_uris: list[str] = Field(default_factory=list)
+    music_uri: Optional[str] = None
+    voice_uri: Optional[str] = None
+
+
+class SceneStatusInfo(BaseModel):
+    """Per-scene status info for V2 job status response."""
+    scene_id: int
+    scene_index: int
+    description: Optional[str] = None
+    media_type: str
+    engine_used: Optional[str] = None
+    status: str
+    fallback_used: bool = False
+    asset_path: Optional[str] = None
+
+
+class JobStatusResponseV2(BaseModel):
+    """V2 job status response — includes scene-level progress."""
+    job_id: str
+    version: int = 2
+    status: str
+    preset_id: str
+    target_duration_seconds: int
+    progress_pct: float = 0.0
+    scene_count: int = 0
+    scenes: list[SceneStatusInfo] = Field(default_factory=list)
+    output_uri: Optional[str] = None
+    thumbnail_uri: Optional[str] = None
+    fallback_used: bool = False
+    fallback_reason: Optional[str] = None
+    error: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

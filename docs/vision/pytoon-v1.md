@@ -1,3 +1,7 @@
+> STATUS: BASELINED (V1)
+> This document is stable enough to execute against.
+> Changes require explicit PM approval and version bump.
+
 # Pytoon V1 – System of Record
 
 This document is the authoritative source of truth for:
@@ -25,6 +29,171 @@ Pytoon is a short-form video compiler designed to empower users (especially bran
 **Success Criteria:** For V1, success will be measured by: - The system correctly producing videos that match the user's intent and inputs in at least 95% of test cases (see Acceptance Tests). For example, if given 3 product images and a tagline, the output video should incorporate all 3 images and show the tagline text clearly. - Visual quality: Videos should have smooth transitions, legible text (proper font sizing and contrast), and no glaring technical issues (no desync of audio, no black frames, etc.). - Turnaround time: On a typical modern PC or a baseline cloud instance, a 15-second video with a few assets should render in well under a minute (exact performance benchmarks can be refined, but the user experience should feel fast). - Reliability: Even if the local engine fails (due to lack of codec, low resources, etc.), the fallback kicks in seamlessly so the user still gets a video. The goal is **zero failed videos** in normal use; all jobs either succeed locally or via fallback. We will track the percentage of jobs that require fallback and ensure it stays within acceptable limits. - Stakeholder satisfaction: Product and creative teams should approve the video styles and brand alignment. Essentially, the videos should meet marketing's standards for brand safety and message - this will be validated in final acceptance review.
 
 In summary, the vision for Pytoon is to **dramatically speed up short-form video creation** while keeping it **on-brand and hassle-free**. It will do so by intelligently assembling user-provided content into compelling vertical videos, using a local-first approach for speed and privacy with cloud rendering as a safety net. Ultimately, Pytoon will help teams produce more video content (a medium with high ROI[\[5\]](https://www.mediaplacepartners.com/short-form-video-success/#:~:text=If%20your%20business%20has%20poured,to%20other%20top%20marketing%20trends)[\[6\]](https://www.mediaplacepartners.com/short-form-video-success/#:~:text=perfect%20for%20short,to%20other%20top%20marketing%20trends)) without investing in manual editing, thereby accelerating content output in the era of booming short-form video consumption.
+
+## Phase Map (Execution Order)
+
+This section defines the **authoritative execution order** for building the Pytoon Video Generation System.  
+Work **MUST** proceed sequentially by phase. No phase may be skipped or partially entered.
+
+Each phase grants **explicit permission boundaries** for what work is allowed and implicitly forbids all other work.
+
+---
+
+### PHASE-1: Scope Alignment & Design Confirmation
+
+**Objective:**  
+Lock intent, boundaries, and contracts before implementation begins.
+
+**Permitted work:**
+- Finalize V1 scope and non-goals
+- Confirm supported video archetypes:
+  - Product Hero (I2V)
+  - Background + Product Overlay
+  - Meme/Text (T2V)
+- Confirm system constraints:
+  - Local-first, API-optional
+  - Brand-safe mode default = ON
+  - Maximum video duration = 60 seconds
+- Define and freeze:
+  - RenderSpec structure (fields, versioning)
+  - Preset system (initial list and defaults)
+  - Engine policy rules (`local_only`, `local_preferred`, `api_only`)
+- Confirm output contract (MP4, 9:16, metadata)
+
+**Explicitly forbidden in this phase:**
+- Writing production code
+- Optimizing model quality
+- Adding non-essential features
+- Implementing posting, analytics, or idea generation
+
+**Exit criteria (must be true):**
+- V1 scope is written and approved
+- RenderSpec is defined and versioned
+- Phase Map is accepted as authoritative
+
+---
+
+### PHASE-2: System Skeleton Implementation
+
+**Objective:**  
+Build the system’s *spine* so jobs flow end-to-end, even with placeholder outputs.
+
+**Permitted work:**
+- API and Orchestrator service
+- Job lifecycle and state machine
+- Job queue and worker loop
+- Metadata persistence (database)
+- Object storage wiring
+- `/render` and `/render/{job_id}` endpoints
+- Placeholder rendering or dummy clips
+
+**Explicitly forbidden in this phase:**
+- Real video generation
+- GPU optimization
+- Caption styling or visual polish
+- Preset tuning
+
+**Exit criteria (must be true):**
+- Jobs can be submitted, queued, processed, and completed
+- Job state persists across restarts
+- System runs unattended with placeholder outputs
+
+---
+
+### PHASE-3: Engine Integration
+
+**Objective:**  
+Enable **real video generation** behind a stable engine abstraction.
+
+**Permitted work:**
+- Engine Adapter interface
+- Local engine integration (e.g., ComfyUI workflows)
+  - Image → Video (I2V)
+  - Text → Video (T2V background)
+- Segment-based rendering (2–4 second segments)
+- Engine health checks
+- Engine fallback logic (local → API)
+
+**Explicitly forbidden in this phase:**
+- Caption polish
+- Brand styling
+- Preset refinement
+- Uploading or analytics
+
+**Exit criteria (must be true):**
+- System generates real video clips locally
+- Segments render independently and reliably
+- Engine fallback works without breaking upstream logic
+
+---
+
+### PHASE-4: Feature Completion
+
+**Objective:**  
+Turn raw clips into **usable, brand-safe videos**.
+
+**Permitted work:**
+- ffmpeg assembly pipeline:
+  - Segment concatenation
+  - Crossfade transitions
+  - Scaling and cropping to 9:16
+- Product/person overlay system
+- Brand-safe enforcement rules
+- Caption rendering (hook, beats, CTA)
+- Audio mixing and loudness normalization
+- Preset implementation and tuning
+- Full duration support up to 60 seconds
+
+**Explicitly forbidden in this phase:**
+- Growth features
+- Trend analysis
+- Auto-posting
+- Feedback loops or analytics
+
+**Exit criteria (must be true):**
+- Videos are postable without manual fixes
+- Product identity remains stable
+- Presets produce consistent output
+- 60-second videos assemble correctly
+
+---
+
+### PHASE-5: Testing, Hardening & Launch Prep
+
+**Objective:**  
+Make the system **boringly reliable**.
+
+**Permitted work:**
+- Acceptance testing
+- Failure injection and recovery testing
+- Fallback verification
+- Observability (logs, metrics)
+- Performance tuning within defined constraints
+- Documentation
+- Dockerization and operational runbooks
+
+**Explicitly forbidden in this phase:**
+- Adding new features
+- Expanding scope
+- Refactoring for elegance or aesthetics
+
+**Exit criteria (must be true):**
+- ≥80% render success rate across 50+ jobs
+- System survives restarts and partial failures
+- System always returns a usable output
+- V1 is tagged and frozen
+
+---
+
+### Enforcement Rule (Non-Negotiable)
+
+> **No work may be performed from a later phase unless all exit criteria of the current phase are satisfied.**
+
+This rule exists to:
+- Prevent scope creep
+- Prevent premature optimization
+- Protect delivery velocity
+- Keep humans and agents aligned
 
 ## Architecture Overview
 
@@ -322,6 +491,177 @@ After running these tests, we should also perform a **cross-platform check**: e.
 ### Observability and Logging
 
 For a successful launch, we need to have good observability in place from day one: - **Logging:** The system should produce logs that can help diagnose issues. Key events to log: - Job received (with job ID and brief details like number of assets). - Start and end of a job processing in worker, including which engine was used. - Any fallback trigger ("Local engine failed, switching to remote for job X"). - Any errors encountered, with stack trace or error code from ffmpeg, etc. - Warnings for any non-fatal issues (e.g., "Image too large, downscaled from 4K to 1080p"). These logs should be stored in a way accessible to developers (file or console if container logs, etc.). No sensitive personal data in logs, of course. - **Metrics:** We will collect the following metrics: - **Success Rate:** number of completed videos vs number of failed. This should ideally be ~100% for normal usage. If failures occur, we investigate. We set an internal SLO like "95%+ jobs succeed". - **Fallback Usage:** count how many jobs used remote fallback. If this number is high, it means local engine had issues often - we want to monitor that and improve local or see why (maybe users with huge videos). - **Render Duration:** measure time from job start to completion. Compute average, p95, etc. This helps identify performance improvements or regressions. We might aim for, say, average under 30s for typical video. - **Queue Time:** if applicable, measure time spent in queue before a worker picked it up (should be near zero unless system is busy). - **System Resource Utilization:** not exactly a metric we output to user, but we should monitor CPU, memory usage of the worker over time under load to catch any leaks or need for scaling. - Possibly metric for most used archetype (just for product insight). - **Alerting:** While perhaps not needed at launch immediately, we could set up simple alerts (like if failure rate in last hour > X% send an alert to team). Or if average render time spikes, etc. For now, developers should at least manually watch metrics after launch.
+
+## Acceptance Criteria Index
+
+This section defines the **authoritative, testable acceptance criteria** for the Pytoon Video Generation System.  
+All claims of “done,” “complete,” or “working” MUST map directly to one or more Acceptance Criteria (AC).
+
+No feature, phase, or release may be considered complete unless **all applicable ACs are satisfied and verifiable**.
+
+This index is intentionally checklist-based to enable autonomous QA, development, and agent execution.
+
+---
+
+### Core Output & Format
+
+**AC-001**  
+System produces a valid MP4 video encoded with:
+- Video: H.264  
+- Audio: AAC (if audio is present)  
+- Resolution: 1080x1920  
+- Aspect ratio: 9:16  
+
+**AC-002**  
+Generated video duration **never exceeds 60 seconds**.  
+Tolerance: ±0.5 seconds maximum.
+
+**AC-003**  
+System produces a thumbnail image (PNG or JPG) derived from the final video.
+
+---
+
+### RenderSpec & Intent Integrity
+
+**AC-004**  
+RenderSpec fully describes the intended video output and contains:
+- Archetype
+- Duration
+- Assets
+- Segment plan
+- Caption plan
+- Audio plan
+- Constraints  
+without embedding engine-specific or model-specific logic.
+
+**AC-005**  
+RenderSpec is versioned and persisted with each job for reproducibility.
+
+---
+
+### Engine Execution & Fallbacks
+
+**AC-006**  
+Local rendering engine successfully generates video clips for supported simple cases:
+- Product overlay
+- Short meme/text video
+- Basic I2V hero shot
+
+**AC-007**  
+Engine policy is enforced correctly:
+- `local_only` → no API usage
+- `local_preferred` → API fallback on local failure
+- `api_only` → API used regardless of local availability
+
+**AC-008**  
+Remote engine fallback activates automatically when:
+- Local engine errors
+- Local engine is unhealthy
+- Local engine times out  
+without breaking the job lifecycle.
+
+---
+
+### Brand-Safe Enforcement
+
+**AC-009**  
+When `brand_safe = true`:
+- Product/person assets are not regenerated unless explicitly allowed
+- Overlays use original assets
+- Fonts, transitions, and motion intensity are restricted to preset-safe values
+
+**AC-010**  
+Brand-safe mode prevents visible distortion of:
+- Product labels
+- Logos
+- Text embedded in product imagery
+
+---
+
+### Segmentation & Assembly
+
+**AC-011**  
+Videos longer than a single segment are rendered as multiple independent segments and assembled correctly.
+
+**AC-012**  
+Segment assembly produces a continuous final video using:
+- Concatenation
+- Optional crossfades (if enabled by preset)
+- Consistent visual and caption styling across segments
+
+---
+
+### Captions & Audio
+
+**AC-013**  
+Captions are burned into the video and include:
+- Hook
+- One or more beats
+- CTA (if defined by preset)
+
+**AC-014**  
+Captions remain within defined safe zones for 9:16 mobile viewing.
+
+**AC-015**  
+If audio is present:
+- Music loops or trims to match video duration
+- Voice (if present) ducks background music
+- Final audio is loudness-normalized
+
+---
+
+### Job Lifecycle & Reliability
+
+**AC-016**  
+End-to-end job lifecycle functions correctly:
+- Submit → Queue → Render → Assemble → Retrieve
+
+**AC-017**  
+Job status transitions are persisted and recoverable after:
+- Service restart
+- Worker restart
+- Partial failure
+
+**AC-018**  
+On render failure, system returns a **usable fallback output** rather than no output.
+
+---
+
+### Observability & Proof
+
+**AC-019**  
+System records structured logs including:
+- Job ID
+- Segment ID
+- Engine used
+- Render duration
+- Failure reason (if any)
+
+**AC-020**  
+System exposes metrics sufficient to calculate:
+- Render success rate
+- Engine fallback rate
+- Average segment render time
+
+---
+
+### Release Gate
+
+**AC-021**  
+V1 release requires:
+- ≥80% success rate across at least 50 jobs
+- Zero manual intervention during rendering
+- All applicable acceptance criteria above passing
+
+---
+
+### Enforcement Rule
+
+> A feature, phase, or release is **not complete** unless it can be explicitly mapped to one or more Acceptance Criteria in this index.
+
+This index is the system’s **“prove it” gate**.  
+Narrative explanations do not satisfy acceptance. Only verifiable criteria do.
+
 
 ### Final Exit Criteria
 

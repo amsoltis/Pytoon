@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import Response
 
-from pytoon.api_orchestrator.routes import health_router, router
+from pytoon.api_orchestrator.routes import health_router, router, router_v2
 from pytoon.config import get_settings
 from pytoon.db import init_db
 from pytoon.log import setup_logging, get_logger
@@ -75,11 +75,12 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Pytoon Render Engine",
-        version="1.0.0",
+        version="2.0.0",
         lifespan=lifespan,
     )
     app.include_router(health_router)
     app.include_router(router)
+    app.include_router(router_v2)
 
     @app.get("/metrics")
     async def prom_metrics():

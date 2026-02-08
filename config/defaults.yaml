@@ -23,3 +23,23 @@ queue:
 observability:
   json_logs: true
   metrics_enabled: true
+# V2 TTS configuration (Phase 4)
+tts:
+  primary_provider: "elevenlabs"
+  backup_provider: "openai"
+  voice_name: "default"
+  speed: 1.0
+  output_format: "mp3"
+# V2 Caption styling defaults
+caption_style:
+  font_family: "Arial"
+  font_size: 48
+  font_color: "white"
+  outline_color: "black"
+  outline_width: 2
+  background_color: "black"
+  background_opacity: 0.5
+  position: "bottom-center"
+  max_lines: 2
+  animation: "fade"
+  fade_duration: 0.2

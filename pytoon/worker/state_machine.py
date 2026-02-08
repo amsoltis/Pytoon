@@ -7,9 +7,9 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from pytoon.db import JobRow, SegmentRow
+from pytoon.db import JobRow, SceneRow, SegmentRow
 from pytoon.log import get_logger
-from pytoon.models import JobStatus, SegmentStatus
+from pytoon.models import JobStatus, JobStatusV2, SegmentStatus
 
 logger = get_logger(__name__)
 
@@ -147,3 +147,107 @@ def get_incomplete_segments(db: Session, job_id: str) -> list[SegmentRow]:
         .order_by(SegmentRow.index)
         .all()
     )
+
+
+# ---------------------------------------------------------------------------
+# V2 state helpers  (P2-09)
+# ---------------------------------------------------------------------------
+
+def transition_job_v2(
+    db: Session,
+    job_id: str,
+    new_status: JobStatusV2,
+    *,
+    progress_pct: float | None = None,
+    output_uri: str | None = None,
+    thumbnail_uri: str | None = None,
+    fallback_used: bool | None = None,
+    fallback_reason: str | None = None,
+    error: str | None = None,
+    timeline_json: str | None = None,
+    scene_graph_json: str | None = None,
+):
+    """Transition a V2 job to a new state."""
+    job: JobRow | None = db.query(JobRow).filter(JobRow.id == job_id).first()
+    if job is None:
+        logger.error("v2_job_not_found_for_transition", job_id=job_id)
+        return
+
+    old = job.status
+    job.status = new_status.value
+    job.updated_at = datetime.now(timezone.utc)
+
+    if progress_pct is not None:
+        job.progress_pct = progress_pct
+    if output_uri is not None:
+        job.output_uri = output_uri
+    if thumbnail_uri is not None:
+        job.thumbnail_uri = thumbnail_uri
+    if fallback_used is not None:
+        job.fallback_used = fallback_used
+    if fallback_reason is not None:
+        job.fallback_reason = fallback_reason
+    if error is not None:
+        job.error = error
+    if timeline_json is not None:
+        job.timeline_json = timeline_json
+    if scene_graph_json is not None:
+        job.scene_graph_json = scene_graph_json
+
+    db.commit()
+    logger.info("v2_job_transition", job_id=job_id, old=old, new=new_status.value)
+
+
+def transition_scene(
+    db: Session,
+    job_id: str,
+    scene_id: int,
+    new_status: str,
+    *,
+    engine_used: str | None = None,
+    asset_path: str | None = None,
+    fallback_used: bool | None = None,
+    render_duration_ms: int | None = None,
+    error_message: str | None = None,
+):
+    """Transition a V2 scene row to a new status."""
+    sr: SceneRow | None = (
+        db.query(SceneRow)
+        .filter(SceneRow.job_id == job_id, SceneRow.scene_id == scene_id)
+        .first()
+    )
+    if sr is None:
+        logger.error("v2_scene_not_found", job_id=job_id, scene_id=scene_id)
+        return
+
+    sr.status = new_status
+    sr.updated_at = datetime.now(timezone.utc)
+
+    if engine_used is not None:
+        sr.engine_used = engine_used
+    if asset_path is not None:
+        sr.asset_path = asset_path
+    if fallback_used is not None:
+        sr.fallback_used = fallback_used
+    if render_duration_ms is not None:
+        sr.render_duration_ms = render_duration_ms
+    if error_message is not None:
+        sr.error_message = error_message
+
+    db.commit()
+    logger.info("v2_scene_transition", job_id=job_id, scene_id=scene_id, new=new_status)
+
+
+def compute_scene_progress(db: Session, job_id: str) -> float:
+    """Return 0.0–100.0 based on scene completion for V2 jobs."""
+    scene_rows = db.query(SceneRow).filter(SceneRow.job_id == job_id).all()
+    if not scene_rows:
+        return 0.0
+    done = sum(1 for s in scene_rows if s.status == "DONE")
+    return round(done / len(scene_rows) * 100, 1)
+
+
+def all_scenes_done(db: Session, job_id: str) -> bool:
+    """Check if all V2 scenes are done."""
+    scene_rows = db.query(SceneRow).filter(SceneRow.job_id == job_id).all()
+    return all(s.status == "DONE" for s in scene_rows) and len(scene_rows) > 0

@@ -51,6 +51,15 @@ def db_session(db_engine) -> Generator[Session, None, None]:
 
 @pytest.fixture()
 def client(db_engine) -> Generator[TestClient, None, None]:
+    import pytoon.db as _db_mod
+
+    # Patch the global db engine so init_db() and any internal usage
+    # share the same in-memory database as the fixture
+    old_engine = _db_mod._engine
+    old_session = _db_mod._SessionLocal
+    _db_mod._engine = db_engine
+    _db_mod._SessionLocal = sessionmaker(bind=db_engine, expire_on_commit=False)
+
     app = create_app()
     factory = sessionmaker(bind=db_engine, expire_on_commit=False)
 
@@ -62,8 +71,13 @@ def client(db_engine) -> Generator[TestClient, None, None]:
             session.close()
 
     app.dependency_overrides[get_db] = _override_db
+
     with TestClient(app) as c:
         yield c
+
+    # Restore
+    _db_mod._engine = old_engine
+    _db_mod._SessionLocal = old_session
 
 
 @pytest.fixture()

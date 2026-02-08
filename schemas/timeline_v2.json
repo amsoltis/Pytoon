@@ -1,0 +1,301 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pytoon.dev/schemas/timeline_v2.json",
+  "title": "Pytoon V2 Timeline",
+  "description": "Canonical Timeline JSON schema for Pytoon V2. The Timeline is the single authoritative source for all timing in the final video -- nothing appears without a timeline entry. Produced by the Timeline Orchestrator from a Scene Graph.",
+  "version": "2.0",
+  "type": "object",
+  "required": ["version", "timeline", "tracks"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "2.0",
+      "description": "Schema version. Must be '2.0' for V2 timelines."
+    },
+    "totalDuration": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 60000,
+      "description": "Total video duration in milliseconds. Must not exceed 60000ms (60s)."
+    },
+    "timeline": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered list of scene entries on the timeline. Defines when each scene plays.",
+      "items": {
+        "$ref": "#/definitions/TimelineEntry"
+      }
+    },
+    "tracks": {
+      "$ref": "#/definitions/Tracks",
+      "description": "Multi-track composition data: video layers, audio tracks, and caption events."
+    }
+  },
+  "definitions": {
+    "TimelineEntry": {
+      "type": "object",
+      "required": ["sceneId", "start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "sceneId": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Reference to the scene ID in the Scene Graph."
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Scene start time in milliseconds."
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Scene end time in milliseconds. Must be greater than start."
+        },
+        "transition": {
+          "$ref": "#/definitions/TransitionSpec",
+          "description": "Transition to the next scene. Null or omitted for the last scene."
+        }
+      }
+    },
+    "TransitionSpec": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["cut", "fade", "fade_black", "swipe_left", "swipe_right"],
+          "description": "Transition type."
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000,
+          "default": 500,
+          "description": "Transition duration in milliseconds. 0 for instant cut."
+        }
+      }
+    },
+    "Tracks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "video": {
+          "type": "array",
+          "default": [],
+          "description": "Video track entries: one or more per scene (multiple layers supported for overlays).",
+          "items": {
+            "$ref": "#/definitions/VideoTrack"
+          }
+        },
+        "audio": {
+          "type": "array",
+          "default": [],
+          "description": "Audio track entries: voiceover, background music, sound effects.",
+          "items": {
+            "$ref": "#/definitions/AudioTrack"
+          }
+        },
+        "captions": {
+          "type": "array",
+          "default": [],
+          "description": "Caption events: timed text overlays synchronized to voice/scenes.",
+          "items": {
+            "$ref": "#/definitions/CaptionTrack"
+          }
+        }
+      }
+    },
+    "VideoTrack": {
+      "type": "object",
+      "required": ["sceneId"],
+      "additionalProperties": false,
+      "properties": {
+        "sceneId": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Reference to the scene this video track belongs to."
+        },
+        "asset": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "File path or URI to the video/image asset. Null if not yet generated."
+        },
+        "effect": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Visual effect applied to this asset (e.g., 'zoom', 'ken_burns_pan')."
+        },
+        "layer": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Layer number for compositing. 0 = background, higher = foreground."
+        },
+        "transform": {
+          "$ref": "#/definitions/Transform",
+          "description": "Position, scale, and opacity transform for this video element."
+        }
+      }
+    },
+    "Transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "position": {
+          "type": "string",
+          "enum": ["center", "top-left", "top-right", "bottom-left", "bottom-right", "custom"],
+          "default": "center",
+          "description": "Positioning on the frame."
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 5.0,
+          "default": 1.0,
+          "description": "Scale factor."
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 1.0,
+          "description": "Opacity (0.0 = transparent, 1.0 = opaque)."
+        },
+        "x": {
+          "type": ["integer", "null"],
+          "default": null,
+          "description": "Custom X position in pixels (from left). Only used when position='custom'."
+        },
+        "y": {
+          "type": ["integer", "null"],
+          "default": null,
+          "description": "Custom Y position in pixels (from top). Only used when position='custom'."
+        }
+      }
+    },
+    "AudioTrack": {
+      "type": "object",
+      "required": ["type", "start"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["voiceover", "music", "sfx"],
+          "description": "Audio track type."
+        },
+        "file": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "File path or URI to the audio file."
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Start time in milliseconds."
+        },
+        "end": {
+          "type": ["integer", "null"],
+          "default": null,
+          "description": "End time in milliseconds. Null means play to end of file or video."
+        },
+        "volume": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2.0,
+          "default": 1.0,
+          "description": "Volume multiplier (1.0 = original level)."
+        },
+        "duckRegions": {
+          "type": "array",
+          "default": [],
+          "description": "Regions where this track's volume should be ducked (lowered). Typically used for music tracks during voiceover.",
+          "items": {
+            "$ref": "#/definitions/DuckRegion"
+          }
+        }
+      }
+    },
+    "DuckRegion": {
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Duck region start in milliseconds."
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Duck region end in milliseconds. Must be greater than start."
+        },
+        "duckAmount": {
+          "type": "number",
+          "minimum": -40.0,
+          "maximum": 0.0,
+          "default": -12.0,
+          "description": "Volume reduction in dB during this region. Default -12dB (~25% volume)."
+        },
+        "fadeIn": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2.0,
+          "default": 0.2,
+          "description": "Fade-down duration in seconds at the start of the duck region."
+        },
+        "fadeOut": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2.0,
+          "default": 0.2,
+          "description": "Fade-up duration in seconds at the end of the duck region."
+        }
+      }
+    },
+    "CaptionTrack": {
+      "type": "object",
+      "required": ["text", "start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Caption text to display."
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Caption display start time in milliseconds."
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Caption display end time in milliseconds. Must be greater than start."
+        },
+        "sceneId": {
+          "type": ["integer", "null"],
+          "default": null,
+          "description": "Reference to the scene this caption belongs to. Used for validation (caption must fall within scene boundaries)."
+        },
+        "style": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Style reference name from preset. Null uses default caption style."
+        }
+      }
+    }
+  },
+  "x-validation-rules": {
+    "no_overlapping_scenes": "Timeline entries must not overlap (except for transition overlap periods).",
+    "start_less_than_end": "For all entries: start < end.",
+    "captions_within_scene": "Each caption's [start, end] must fall within its referenced scene's [start, end] boundaries.",
+    "audio_within_duration": "Audio track end times must not extend past totalDuration.",
+    "scene_ids_reference_valid": "All sceneId references must correspond to scenes in the associated Scene Graph.",
+    "timeline_ordered": "Timeline entries must be in ascending order by start time.",
+    "total_duration_max_60s": "totalDuration must not exceed 60000ms."
+  }
+}

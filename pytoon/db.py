@@ -45,6 +45,12 @@ class JobRow(Base):
     fallback_reason = Column(String(512), nullable=True)
     error = Column(Text, nullable=True)
     progress_pct = Column(Float, default=0.0)
+    # V2 columns (P2-10) — ignored by V1 jobs (version=1)
+    version = Column(Integer, default=1)
+    scene_graph_json = Column(Text, nullable=True)
+    timeline_json = Column(Text, nullable=True)
+    voiceover_path = Column(String(512), nullable=True)
+    caption_track_path = Column(String(512), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
@@ -65,6 +71,32 @@ class SegmentRow(Base):
     error = Column(Text, nullable=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# V2 models  (P2-10)
+# ---------------------------------------------------------------------------
+
+class SceneRow(Base):
+    """Per-scene tracking for V2 jobs."""
+    __tablename__ = "scenes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scene_id = Column(Integer, nullable=False)
+    job_id = Column(String(64), nullable=False, index=True)
+    scene_index = Column(Integer, nullable=False)
+    description = Column(Text, nullable=True)
+    duration_ms = Column(Integer, nullable=False)
+    media_type = Column(String(32), nullable=False)      # 'image' | 'video'
+    engine_used = Column(String(32), nullable=True)       # runway|pika|luma|local|null
+    status = Column(String(32), default="PENDING")        # PENDING|RENDERING|DONE|FAILED|FALLBACK
+    asset_path = Column(String(512), nullable=True)
+    fallback_used = Column(Boolean, default=False)
+    render_duration_ms = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
 
 
 # ---------------------------------------------------------------------------

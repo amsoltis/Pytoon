@@ -19,3 +19,64 @@ adapters:
   api_luma:
     type: api
     base_url: https://api.example.com
+
+# ---------------------------------------------------------------------------
+# V2 Engine Configuration (Phase 3)
+# ---------------------------------------------------------------------------
+v2:
+  default_engine: runway
+  timeout_seconds: 60
+  engines:
+    runway:
+      enabled: true
+      timeout_seconds: 60
+      max_clip_duration_seconds: 10
+      supports_image_input: true
+      supported_resolutions: ["1080x1920", "720x1280"]
+      capabilities: [realistic, cinematic, photorealistic, slow_motion]
+    pika:
+      enabled: true
+      timeout_seconds: 60
+      max_clip_duration_seconds: 8
+      supports_image_input: true
+      supported_resolutions: ["1080x1920"]
+      capabilities: [stylized, creative, artistic, anime, abstract, effects]
+    luma:
+      enabled: true
+      timeout_seconds: 60
+      max_clip_duration_seconds: 10
+      supports_image_input: true
+      supported_resolutions: ["1080x1920"]
+      capabilities: [physics, 3d, product, showcase, rotation, realistic]
+  fallback_chain: [runway, pika, luma]
+  # Per-preset engine preferences (P5-01)
+  preset_engine_prefs:
+    product_hero_clean:
+      preferred_engine: luma
+      fallback_override: [luma, runway, pika]
+    cinematic_story:
+      preferred_engine: runway
+    stylized_promo:
+      preferred_engine: pika
+  # Engine rotation: auto-switch default when failure rate exceeds threshold
+  engine_rotation:
+    enabled: true
+    failure_threshold: 0.5
+    window_seconds: 300
+    min_attempts: 3
+  # Content moderation (P5-04)
+  content_moderation:
+    strictness: standard  # strict | standard | off
+    nsfw_classifier_enabled: false
+    auto_rephrase_on_rejection: true
+    max_rephrase_attempts: 2
+  prompt_sanitization:
+    blocklist: [competitor_brand, offensive_term]
+    substitutions:
+      shoot: film
+      kill: end
+      destroy: transform
+      explode: burst
+      attack: approach
+    max_prompt_length: 500
+    brand_safe_suffix: "family-friendly, professional, brand-safe"

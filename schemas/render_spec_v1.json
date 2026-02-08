@@ -1,6 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Pytoon RenderSpec V1",
+  "description": "Canonical contract for Pytoon video generation. Engine-agnostic, versioned, and persisted with every job.",
   "type": "object",
   "required": [
     "render_spec_version",
@@ -18,54 +19,104 @@
     "constraints"
   ],
   "properties": {
-    "render_spec_version": { "type": "integer", "enum": [1] },
-    "job_id": { "type": "string" },
+    "render_spec_version": {
+      "type": "integer",
+      "enum": [1],
+      "description": "Schema version. Must be 1 for V1."
+    },
+    "job_id": {
+      "type": "string",
+      "description": "Unique job identifier (UUID hex)."
+    },
     "archetype": {
       "type": "string",
-      "enum": ["PRODUCT_HERO", "OVERLAY", "MEME_TEXT"]
+      "enum": ["PRODUCT_HERO", "OVERLAY", "MEME_TEXT"],
+      "description": "Video archetype determining rendering style."
     },
-    "brand_safe": { "type": "boolean" },
-    "aspect_ratio": { "type": "string", "enum": ["9:16"] },
-    "target_duration_seconds": { "type": "integer", "minimum": 1, "maximum": 60 },
-    "segment_duration_seconds": { "type": "integer", "minimum": 2, "maximum": 4 },
-    "preset_id": { "type": "string" },
+    "brand_safe": {
+      "type": "boolean",
+      "default": true,
+      "description": "When true, restricts fonts, transitions, and prevents asset regeneration."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "enum": ["9:16"],
+      "description": "Output aspect ratio. Fixed at 9:16 for V1."
+    },
+    "target_duration_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60,
+      "description": "Requested total video duration in seconds."
+    },
+    "segment_duration_seconds": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 4,
+      "default": 3,
+      "description": "Target duration per rendered segment."
+    },
+    "preset_id": {
+      "type": "string",
+      "description": "ID of the preset used (from config/presets.yaml)."
+    },
     "engine_policy": {
       "type": "string",
-      "enum": ["local_only", "local_preferred", "api_only"]
+      "enum": ["local_only", "local_preferred", "api_only"],
+      "default": "local_preferred",
+      "description": "Engine selection policy."
     },
     "assets": {
       "type": "object",
+      "description": "Media assets for video generation.",
       "properties": {
         "images": {
           "type": "array",
-          "items": { "type": "string", "format": "uri" }
+          "items": { "type": "string" },
+          "description": "Storage URIs for input images."
         },
-        "mask": { "type": "string", "format": "uri" },
-        "music": { "type": "string", "format": "uri" },
-        "voice": { "type": "string", "format": "uri" }
+        "mask": {
+          "type": ["string", "null"],
+          "description": "URI for transparency mask (PNG with alpha)."
+        },
+        "music": {
+          "type": ["string", "null"],
+          "description": "URI for background music track."
+        },
+        "voice": {
+          "type": ["string", "null"],
+          "description": "URI for voiceover audio."
+        }
       },
       "required": ["images"]
     },
     "segment_prompts": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": { "type": "string" },
+      "description": "Per-segment text prompts for the engine."
     },
     "captions_plan": {
       "type": "object",
+      "description": "Caption timing and content for burned-in text.",
       "required": ["hook", "beats", "cta", "timings"],
       "properties": {
-        "hook": { "type": "string" },
-        "beats": { "type": "array", "items": { "type": "string" } },
-        "cta": { "type": "string" },
+        "hook": { "type": "string", "description": "Opening attention text." },
+        "beats": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Body content captions."
+        },
+        "cta": { "type": "string", "description": "Call-to-action text." },
         "timings": {
           "type": "array",
+          "description": "Computed start/end/text for each caption.",
           "items": {
             "type": "object",
             "required": ["start", "end", "text"],
             "properties": {
-              "start": { "type": "number" },
-              "end": { "type": "number" },
-              "text": { "type": "string" }
+              "start": { "type": "number", "description": "Start time in seconds." },
+              "end": { "type": "number", "description": "End time in seconds." },
+              "text": { "type": "string", "description": "Caption text to display." }
             }
           }
         }
@@ -73,29 +124,32 @@
     },
     "audio_plan": {
       "type": "object",
+      "description": "Audio mixing parameters.",
       "properties": {
-        "music_level_db": { "type": "number" },
-        "voice_level_db": { "type": "number" },
-        "duck_music": { "type": "boolean" }
+        "music_level_db": { "type": "number", "default": -18.0, "description": "Background music volume in dB." },
+        "voice_level_db": { "type": "number", "default": -6.0, "description": "Voice volume in dB." },
+        "duck_music": { "type": "boolean", "default": true, "description": "Reduce music volume when voice is present." }
       }
     },
     "constraints": {
       "type": "object",
+      "description": "Rendering constraints.",
       "properties": {
-        "safe_zones": { "type": "string" },
-        "keep_subject_static": { "type": "boolean" }
+        "safe_zones": { "type": "string", "default": "default", "description": "Caption safe zone profile." },
+        "keep_subject_static": { "type": "boolean", "default": true, "description": "Prevent product distortion when brand_safe." }
       }
     },
     "segments": {
       "type": "array",
+      "description": "Planned segment list with index and duration.",
       "items": {
         "type": "object",
         "required": ["index", "duration_seconds"],
         "properties": {
-          "index": { "type": "integer" },
-          "duration_seconds": { "type": "number" },
-          "prompt": { "type": "string" },
-          "engine": { "type": "string" }
+          "index": { "type": "integer", "description": "Segment order (0-based)." },
+          "duration_seconds": { "type": "number", "description": "Duration of this segment." },
+          "prompt": { "type": "string", "description": "Engine prompt for this segment." },
+          "engine": { "type": ["string", "null"], "description": "Engine override for this segment." }
         }
       }
     }
